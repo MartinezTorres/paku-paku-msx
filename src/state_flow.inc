@@ -32,6 +32,7 @@ load_time_limit_config_from_index:
         ld (TIME_LIMIT_H), a
         ret
 
+; Main state dispatcher for menu, gameplay, and postgame flows.
 update_state_new:
         ld a, (STATE_ID)
         cp #STATE_MENU
@@ -48,6 +49,8 @@ update_state_new:
         jp z, update_name_new
         jp update_scores_new
 
+; Menu navigation is edge-triggered. A separate idle counter pushes the menu to
+; the best-scores attract screen after roughly five seconds of inactivity.
 update_menu_new:
         ld a, (MENU_RELEASE_WAIT)
         or a
@@ -138,6 +141,7 @@ update_menu_time_store:
         call load_time_limit_config_from_index
         ret
 
+; Count idle rendered frames until the attract-mode score list should appear.
 menu_advance_idle_new:
         ld a, (MENU_IDLE_L)
         inc a
@@ -160,6 +164,8 @@ menu_idle_trigger:
         call clear_input_buffers
         ret
 
+; Single-player starts immediately. Multiplayer first enters key-assignment so
+; each lane can claim one keyboard binding.
 start_selected_game_new:
         xor a
         ld (POSTGAME_SCAN), a
@@ -180,6 +186,7 @@ start_selected_game_single:
         call begin_countdown_new
         ret
 
+; Reset the match and enter the shared 3-2-1-START countdown state.
 begin_countdown_new:
         call prepare_match_new
         call clear_input_buffers
@@ -189,6 +196,8 @@ begin_countdown_new:
         ld (STATE_ID), a
         ret
 
+; Reinitialize timing, difficulty, timer, and all lane-local gameplay state for
+; a fresh round.
 prepare_match_new:
         call KILBUF
         xor a
@@ -225,6 +234,8 @@ prepare_match_timer_done:
         call init_all_lanes
         ret
 
+; Mix time and current menu selections into the small PRNG seed so consecutive
+; rounds diverge even with identical player actions.
 reseed_match_new:
         ld a, (RAND_STATE)
         ld b, a
@@ -240,6 +251,8 @@ reseed_match_new:
         ld (RAND_STATE), a
         ret
 
+; Capture one key per player lane. The release gate prevents a held key from
+; being assigned to several players in a row.
 update_assign_new:
         ld a, (ASSIGN_RELEASE_WAIT)
         or a
@@ -278,6 +291,8 @@ update_assign_read_key:
         call begin_countdown_new
         ret
 
+; The countdown duration lives in simulation ticks. Once it expires, the round
+; enters active play and inputs are cleared before the first live frame.
 update_countdown_new:
         ld a, (COUNTDOWN_TICKS)
         or a
@@ -291,6 +306,8 @@ update_countdown_start:
         call clear_input_buffers
         ret
 
+; ESC uses a two-step confirmation. All other live gameplay work happens in the
+; per-lane simulation, difficulty ramp, timer, and high-score helpers.
 update_play_new:
         ld a, (MENU_ACTION_EDGE)
         and #M_ACT_ESC
@@ -326,6 +343,7 @@ update_play_run:
         ret nz
         jp finish_timed_match_new
 
+; Timed modes count down in whole seconds from the virtual 60 Hz simulation.
 advance_timer_new:
         ld a, (TIME_LIMIT_L)
         ld b, a
@@ -353,6 +371,8 @@ advance_timer_store_frame:
         ld (TIMER_FRAME), a
         ret
 
+; Freeze the round, compute the winner once, and show the winner banner before
+; name-entry processing begins.
 finish_timed_match_new:
         call build_rankings
         ld a, (RANKS_BASE)
@@ -366,11 +386,15 @@ finish_timed_match_new:
         call clear_input_buffers
         ret
 
+; Endless mode skips the winner banner and jumps straight into the postgame
+; high-score/name-entry scan.
 finish_match_to_names_new:
         xor a
         ld (POSTGAME_SCAN), a
         jp begin_name_sequence_new
 
+; Any key can dismiss the winner banner early; otherwise it times out into the
+; name-entry phase automatically.
 update_winner_new:
         ld a, (ANY_KEY_EDGE)
         or a
@@ -387,11 +411,14 @@ update_winner_new:
 update_winner_done:
         jp begin_name_sequence_new
 
+; Walk the player lanes in order and stop on each score that qualifies for the
+; high-score table.
 begin_name_sequence_new:
         call find_next_name_entry_new
         ret c
         jp return_to_menu_new
 
+; Search for the next lane that earned a high-score entry opportunity.
 find_next_name_entry_new:
         ld a, (POSTGAME_SCAN)
         ld c, a
@@ -435,6 +462,7 @@ find_next_name_none:
         or a
         ret
 
+; Return to the menu and force an input release before accepting the next key.
 return_to_menu_new:
         xor a
         ld (STATE_ID), a
@@ -445,6 +473,7 @@ return_to_menu_new:
         ld (MENU_RELEASE_WAIT), a
         ret
 
+; The best-scores attract screen exits on any fresh keyboard or joystick input.
 update_scores_new:
         ld a, (ANY_KEY_EDGE)
         or a
@@ -455,6 +484,8 @@ update_scores_new:
 update_scores_exit:
         jp return_to_menu_new
 
+; Name entry consumes one translated pending key at a time on the lane that
+; earned the score.
 update_name_new:
         ld a, (PENDING_KEY_CODE)
         cp #0xff
@@ -489,6 +520,8 @@ update_name_backspace:
         ld (hl), #' '
         ret
 
+; Insert the current lane score into the table, then continue scanning later
+; lanes for more qualifying entries.
 finalize_name_entry_new:
         call insert_current_score_new
         ld a, (NAME_LANE)
@@ -496,6 +529,7 @@ finalize_name_entry_new:
         ld (POSTGAME_SCAN), a
         jp begin_name_sequence_new
 
+; Keep the session header high score live while the round is still running.
 update_live_hi_score_new:
         ld ix, #LANES_BASE
         ld a, (PLAYER_COUNT_V)
@@ -524,6 +558,8 @@ update_live_hi_next:
         djnz update_live_hi_loop
         ret
 
+; Find the insertion rank for HL. Return 0xff when the score does not reach the
+; top-10 list.
 find_hiscore_rank_hl_new:
         ld a, h
         or l
@@ -573,6 +609,7 @@ find_hiscore_rank_append_ok:
         ld a, b
         ret
 
+; Insert the newly named score by shifting lower entries down in place.
 insert_current_score_new:
         ld a, (HISCORE_COUNT)
         ld b, a

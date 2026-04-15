@@ -1,5 +1,7 @@
 ; Menu title rows and per-lane rendering helpers used by the current gameflow.
 
+; The menu title art uses tiles 0..255 laid out directly across the first eight
+; rows of SCREEN 2 page 0.
 render_menu_title_rows:
         ld hl, #SCREEN_BUFFER
         xor a
@@ -15,6 +17,8 @@ render_menu_title_col_loop:
         djnz render_menu_title_row_loop
         ret
 
+; Draw one live gameplay lane: label/score strip, border rails, and the dynamic
+; tile row that carries pellet fragments.
 render_one_lane:
         ld (LANE_INDEX_TMP), a
         push af
@@ -99,6 +103,9 @@ render_lane_track:
         call build_lane_playrow
         ret
 
+; Each lane owns 26 dynamic 8x8 tiles. Clear that cache, stamp the tile IDs
+; into the visible row, then OR pellet fragments into the tiles for every
+; active dot.
 build_lane_playrow:
         ld a, (LANE_INDEX_TMP)
         ld hl, #dynamic_tile_ptrs
@@ -194,6 +201,8 @@ build_lane_dot_next:
         inc b
         jr build_lane_dot_loop
 
+; Pellet shapes can straddle tile boundaries, so their 8-byte fragments are
+; composited into the lane-local dynamic tile set instead of using fixed tiles.
 or_pattern_into_lane_tile:
         push bc
         push de
@@ -220,6 +229,7 @@ get_current_lane_tile_ptr:
         add hl, de
         ret
 
+; Vertical lane spacing depends on the current 1p/2p/3p/4p split-screen layout.
 get_lane_row:
         ld hl, #lane_rows_4p
         ld a, (PLAYER_COUNT_V)

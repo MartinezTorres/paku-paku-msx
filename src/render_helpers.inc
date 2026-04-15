@@ -1,5 +1,6 @@
 ; Rendering helpers, VRAM transfer, sprite assembly, and shared math.
 
+; Start each redraw from a space-filled RAM name table.
 clear_screen_buffer:
         ld hl, #SCREEN_BUFFER
         ld (hl), #0x20
@@ -8,6 +9,8 @@ clear_screen_buffer:
         ldir
         ret
 
+; Copy only the rows used by the current state. If the viewport shrank, also
+; flush the previously visible tail once so stale rows disappear from VRAM.
 flush_visible_rows:
         ld a, (VISIBLE_ROWS)
         or a
@@ -42,6 +45,8 @@ flush_rows_loop:
         jr nz, flush_rows_loop
         ret
 
+; Upload the lane-local dynamic pellet tiles to the correct SCREEN 2 pattern
+; page, then copy the matching tile IDs into the lane's visible row.
 flush_dynamic_tiles:
         ld a, (STATE_ID)
         cp #STATE_PLAY
@@ -99,6 +104,8 @@ flush_dynamic_loop:
         djnz flush_dynamic_loop
         ret
 
+; SCREEN 2 rows 0-7, 8-15, and 16-23 live in three separate pattern/color
+; pages, so lane rows need a page-relative upload offset.
 get_screen2_pattern_page_offset:
         cp #8
         jr c, screen2_page0
@@ -123,12 +130,14 @@ vram_copy_bc:
         call LDIRVM
         ret
 
+; Mark the sprite list as empty by placing the terminator in the first slot.
 init_sprite_buffer:
         ld hl, #SPRITE_BUFFER
         ld a, #SPRITE_END_Y
         ld (hl), a
         ret
 
+; Rebuild the software sprite list every frame and upload it to VRAM.
 flush_actor_sprites:
         call build_actor_sprites
         ld hl, #SPRITE_BUFFER
@@ -137,6 +146,8 @@ flush_actor_sprites:
         call vram_copy_block
         ret
 
+; Menu states spend the sprite budget on the title overlay. Gameplay uses the
+; same buffer for per-lane player and ghost sprites.
 build_actor_sprites:
         ld hl, #SPRITE_BUFFER
         ld (SPRITE_LIST_PTR), hl
@@ -185,6 +196,7 @@ terminate_sprite_list:
         ld (hl), a
         ret
 
+; Anchor 16x16 sprites inside the lane between the two blue border rails.
 calc_lane_sprite_y:
         call get_lane_row
         add a, #2
@@ -250,6 +262,8 @@ enemy_sprite_ready:
         call append_sprite_entry
         ret
 
+; Convert fixed-point lane X into a sprite X coordinate and append one 4-byte
+; MSX sprite attribute entry.
 append_sprite_entry:
         push bc
         push de
@@ -358,6 +372,7 @@ write_digit_done:
         inc de
         ret
 
+; Translate D=row, E=col into a pointer inside the RAM screen buffer.
 get_screen_ptr:
         ld a, d
         add a, a
@@ -377,6 +392,7 @@ get_screen_ptr:
         add hl, bc
         ret
 
+; Translate D=row, E=col into a VRAM name-table address.
 get_name_ptr:
         ld a, d
         add a, a

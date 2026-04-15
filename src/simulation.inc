@@ -1,5 +1,7 @@
 ; Core gameplay simulation: lane init, movement, collisions, and difficulty ramp.
 
+; Initialize the active lanes for the selected player count and clear any
+; inactive slots so render/state code can ignore them safely.
 init_all_lanes:
         ld ix, #LANES_BASE
         ld a, (PLAYER_COUNT_V)
@@ -29,6 +31,8 @@ init_lane_next:
         djnz init_lanes_loop
         ret
 
+; Respawn one lane at its canonical player/ghost positions with a fresh pellet
+; set and multiplier state.
 init_active_lane:
         ld hl, #PLAYER_START
         ld L_PX_L(ix), l
@@ -52,6 +56,8 @@ init_active_lane:
         call add_dots
         ret
 
+; Step every active lane once per 60 Hz simulation tick. Register E carries the
+; player-bit mask for the lane currently being updated.
 update_all_lanes:
         ld ix, #LANES_BASE
         ld a, (PLAYER_COUNT_V)
@@ -71,6 +77,8 @@ update_lane_loop:
         djnz update_lane_loop
         ret
 
+; One lane tick covers the entire local game loop: optional reverse, movement,
+; pellet checks, ghost logic, frightened timer, and pellet refill.
 update_one_lane:
         ld a, L_STATUS(ix)
         and #ST_ALIVE
@@ -92,6 +100,8 @@ no_reverse:
         call refill_dots_if_empty
         ret
 
+; Mouth animation advances from the same difficulty scalar used for speed so it
+; ramps up together with movement.
 add_anim_ticks:
         ld a, (DIFF_FP_L)
         ld c, a
@@ -105,6 +115,8 @@ add_anim_ticks:
         ld L_ANM_H(ix), a
         ret
 
+; Move the player in 8.8 fixed-point space and wrap through the tunnel margins
+; so the sprite can leave the visible lane briefly before reappearing.
 move_player:
         ld a, (PLAYER_DELTA_L)
         ld e, a
@@ -142,6 +154,8 @@ move_player_store:
         ld L_PX_H(ix), h
         ret
 
+; Test all active pellets against the player's integer position with a small
+; tolerance. Power pellets also arm frightened mode.
 check_dot_hits:
         ld b, #0
 dot_hit_loop:
@@ -181,6 +195,8 @@ dot_hit_next:
         inc b
         jr dot_hit_loop
 
+; Eyes race back toward home. Otherwise the ghost chases the player, or mirrors
+; that direction while frightened.
 move_enemy:
         ld a, L_EYE(ix)
         or a
@@ -273,6 +289,8 @@ enemy_eye_right_check:
         ld L_EYE(ix), a
         ret
 
+; Close overlap either kills the player immediately or eats the frightened
+; ghost, bumps the multiplier, and awards the ghost bonus.
 check_enemy_hit:
         ld a, L_EYE(ix)
         or a
@@ -312,6 +330,7 @@ enemy_kills_player:
         call init_active_lane
         ret
 
+; Frightened time counts down using the same 8.8 scale as the difficulty ramp.
 update_power_timer:
         ld a, L_PWR_L(ix)
         or L_PWR_H(ix)
@@ -331,6 +350,7 @@ power_store:
         ld L_PWR_H(ix), h
         ret
 
+; Clearing all pellets immediately starts a fresh set.
 refill_dots_if_empty:
         ld a, L_DOTS_L(ix)
         or L_DOTS_H(ix)
@@ -338,6 +358,8 @@ refill_dots_if_empty:
         call add_dots
         ret
 
+; Difficulty rises through a small phase accumulator so speed increases
+; smoothly instead of jumping every second.
 advance_difficulty:
         ld a, (GLOBAL_TICKS_L)
         inc a
@@ -366,6 +388,8 @@ diff_recalc:
 diff_done:
         ret
 
+; Derive player, chase, frightened, and eyes deltas from the current difficulty
+; scalar. The constants preserve the intended relative speeds between actors.
 recalc_deltas:
         ld a, (DIFF_FP_H)
         ld c, #128
@@ -444,6 +468,8 @@ recalc_deltas:
         ld (EYE_DELTA_H), a
         ret
 
+; Refill all 16 pellets and choose a power-pellet slot from one of two five-dot
+; ranges depending on the player's current side of the lane.
 add_dots:
         ld a, #0xff
         ld L_DOTS_L(ix), a
@@ -466,11 +492,13 @@ add_dots_store:
         ld L_MULT(ix), a
         ret
 
+; Normal pellets award the current multiplier value.
 add_multiplier_score:
         ld e, L_MULT(ix)
         ld d, #0
         jp add_lane_score_de
 
+; Saturating 16-bit score add used by both pellet and ghost awards.
 add_lane_score_de:
         ld a, L_SCORE_L(ix)
         add a, e
@@ -486,6 +514,8 @@ add_lane_score_store:
         ld L_SCORE_H(ix), a
         ret
 
+; Pellet occupancy lives in two bytes; low/high mask tables provide the bit for
+; dot index B.
 dot_is_active:
         ld hl, #dot_masks_lo
         ld a, b
@@ -503,6 +533,7 @@ dot_is_active:
 dot_active_yes:
         ret
 
+; Clear one pellet bit in both halves of the occupancy bitmap.
 clear_dot_bit:
         ld hl, #dot_masks_lo
         ld a, b

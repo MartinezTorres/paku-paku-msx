@@ -1,5 +1,7 @@
 ; Score comparison and ranking helpers for winner selection and standings.
 
+; For 2-4 lanes, fixed sorting networks are cheaper and simpler than a general
+; sort. RANKS_BASE always ends up ordered from best to worst.
 build_rankings:
         ld a, #0
         ld (RANKS_BASE), a
@@ -99,6 +101,7 @@ rank_swap_12:
         ld (RANKS_BASE + 2), a
         ret
 
+; Swap the two lane indices when lane C outranks lane B.
 maybe_swap_bc:
         push bc
         call compare_scores_bc
@@ -109,6 +112,8 @@ maybe_swap_bc:
         ld c, a
         ret
 
+; Carry set means score(C) > score(B), which is the order the ranking table
+; wants.
 compare_scores_bc:
         ld a, b
         call set_ix_to_lane_a

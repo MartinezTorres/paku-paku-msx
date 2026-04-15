@@ -3,6 +3,7 @@
 render_state:
         jp render_state_new
 
+; Redraw the entire RAM screen buffer from scratch for the current state.
 render_state_new:
         call clear_screen_buffer
         ld a, (STATE_ID)
@@ -12,6 +13,8 @@ render_state_new:
         jp z, render_scores_screen_new
         jp render_session_new
 
+; Main menu: title art, high score, three configurable options, and the
+; controls legend.
 render_menu_new:
         ld a, #24
         ld (VISIBLE_ROWS), a
@@ -91,6 +94,7 @@ render_menu_items:
         call draw_string
         ret
 
+; Attract-mode best-score list shown after menu idle or after postgame return.
 render_scores_screen_new:
         ld a, #24
         ld (VISIBLE_ROWS), a
@@ -170,6 +174,9 @@ render_scores_footer:
         call draw_string
         ret
 
+; Shared session renderer. During play it draws the live lanes; during key
+; assignment, countdown, winner, and name-entry states it keeps the same lane
+; framing visible and overlays per-lane messages instead.
 render_session_new:
         call set_session_visible_rows_new
         call render_session_header_new
@@ -204,6 +211,7 @@ render_session_play_loop:
         inc a
         jr render_session_play_loop
 
+; Compute how many rows must be flushed for the current split-screen layout.
 set_session_visible_rows_new:
         ld a, (PLAYER_COUNT_V)
         dec a
@@ -222,6 +230,8 @@ set_session_visible_name:
         ld (VISIBLE_ROWS), a
         ret
 
+; Session header text changes slightly by state: timer/endless label, quit
+; confirmation hint, binding hint, countdown hint, and so on.
 render_session_header_new:
         ld hl, #str_players_head
         ld d, #0
@@ -305,6 +315,8 @@ render_session_header_name:
         call draw_string
         ret
 
+; Draw the per-lane header and a message frame that reuses the same rail
+; placement as gameplay, so transitions stay visually stable.
 render_message_lane_new:
         ld (LANE_INDEX_TMP), a
         push af
@@ -349,6 +361,7 @@ render_message_lane_dispatch:
         jp z, render_lane_winner_message_new
         jp render_lane_name_message_new
 
+; Compact message states use a single interior text row between the rails.
 draw_compact_message_lane_frame_new:
         ld a, (LANE_ROW_TMP)
         inc a
@@ -373,6 +386,7 @@ draw_compact_message_lane_frame_new:
         call fill_span
         ret
 
+; Name entry gets an extra text row for the editable eight-character buffer.
 draw_name_message_lane_frame_new:
         ld a, (LANE_ROW_TMP)
         inc a
@@ -404,6 +418,7 @@ draw_name_message_lane_frame_new:
         call fill_span
         ret
 
+; Only one lane is actively waiting for a bind at a time.
 render_lane_assign_message_new:
         ld a, (LANE_INDEX_TMP)
         ld b, a
@@ -435,6 +450,7 @@ render_lane_assign_wait:
         call draw_string
         ret
 
+; Map the 225-tick countdown window to 3, 2, 1, and START! across every lane.
 render_lane_countdown_message_new:
         ld a, (COUNTDOWN_TICKS)
         cp #45
@@ -468,6 +484,7 @@ render_lane_countdown_start:
         call draw_string
         ret
 
+; The winner lane gets the round banner; the others simply show TIME UP.
 render_lane_winner_message_new:
         ld a, (LANE_INDEX_TMP)
         ld b, a
@@ -490,6 +507,7 @@ render_lane_winner_other:
         call draw_string
         ret
 
+; Only the lane currently being named shows the prompt and editable buffer.
 render_lane_name_message_new:
         ld a, (LANE_INDEX_TMP)
         ld b, a
@@ -518,6 +536,8 @@ render_lane_name_head:
         call draw_name_buffer_new
         ret
 
+; Filled characters stay visible; the active and remaining slots render as
+; underscores.
 draw_name_buffer_new:
         ld hl, #TEMP_NAME_BUF
         ld a, (LANE_ROW_TMP)
@@ -569,6 +589,8 @@ draw_fixed_chars_store:
         djnz draw_fixed_chars_loop
         ret
 
+; Convert the remaining seconds counter into a clamped MM:SS string directly in
+; the RAM screen buffer.
 draw_time_mmss_new:
         push hl
         call get_screen_ptr

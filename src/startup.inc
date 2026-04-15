@@ -1,3 +1,7 @@
+; Boot/setup and frame scheduler.
+
+; Enter BIOS graphics mode, capture the base assets we need, seed state, and
+; upload the initial SCREEN 2 / sprite content before the main loop starts.
 init:
         di
         ld sp, #STACK_TOP
@@ -25,6 +29,8 @@ init:
         call flush_actor_sprites
         ei
 
+; Outer frame loop: wait for the next BIOS tick, sample input once, convert the
+; elapsed refresh time into virtual 60 Hz simulation steps, then render once.
 main_loop:
         ei
         ld a, (LAST_JIFFY)
@@ -52,6 +58,7 @@ main_wait_tick:
         call flush_actor_sprites
         jr main_loop
 
+; Reset all global/session variables to the menu defaults expected at cold boot.
 reset_globals:
         xor a
         ld (MODE_ID), a
@@ -111,6 +118,8 @@ reset_globals:
         call init_sprite_buffer
         ret
 
+; Detect PAL vs NTSC so the gameplay scheduler can keep a consistent 60 Hz feel
+; on both 50 Hz and 60 Hz machines.
 detect_refresh_hz:
         ld a, (MSXVER)
         or a
@@ -133,6 +142,8 @@ detect_refresh_60:
         ld (REFRESH_HZ), a
         ret
 
+; Cache the BIOS font in RAM so gameplay tiles and page-0 assets can be rebuilt
+; without needing to read VRAM again later.
 capture_font_patterns:
         ld hl, #PATTERN_TABLE
         ld de, #FONT_BUFFER
@@ -140,6 +151,7 @@ capture_font_patterns:
         call LDIRMV
         ret
 
+; Enable 16x16 hardware sprites for gameplay actors and the menu title overlay.
 enable_16x16_sprites:
         ld a, (RG1SAV)
         and #0xfe
@@ -150,6 +162,7 @@ enable_16x16_sprites:
         out (VDP_CTRL), a
         ret
 
+; Upload the shared pattern/color pages and sprite patterns once at boot.
 init_vram_assets:
         call overlay_custom_patterns_buffer
         ld hl, #FONT_BUFFER
@@ -188,6 +201,7 @@ init_vram_assets:
         call vram_copy_bc
         ret
 
+; Merge the custom gameplay/menu tiles over the cached BIOS font page.
 overlay_custom_patterns_buffer:
         ld hl, #tile_patterns
         ld de, #FONT_BUFFER
@@ -195,6 +209,9 @@ overlay_custom_patterns_buffer:
         ldir
         ret
 
+; Reuse FONT_BUFFER as a temporary 0x800-byte color page. Start from the
+; default white-on-blue color, then overwrite the custom tiles and reserve
+; colors for the per-lane dynamic pellet tiles.
 build_color_page_buffer:
         ld hl, #FONT_BUFFER
         ld (hl), #0xf1
@@ -224,6 +241,8 @@ build_color_page_tile_fill:
         ldir
         ret
 
+; Page 0 alternates between menu-title art and gameplay tiles. Only rewrite it
+; when the active state actually changes to keep VRAM traffic down.
 sync_page0_assets:
         ld a, (STATE_ID)
         or a
@@ -254,6 +273,8 @@ sync_page0_menu:
         ld (PAGE0_ASSET_MODE), a
         ret
 
+; Restore the gameplay version of SCREEN 2 page 0 from the copies already
+; stored in pages 1 and 2.
 restore_gameplay_page0_assets:
         ld hl, #(PATTERN_TABLE + 0x0800)
         ld de, #FONT_BUFFER
@@ -286,6 +307,9 @@ seed_ok:
 update_state:
         jp update_state_new
 
+; Convert elapsed refresh frames into virtual 60 Hz update steps. Edge-triggered
+; inputs are cleared after each consumed simulation step so a single key press
+; cannot fire twice if more than one step runs before the next render.
 run_simulation_steps:
         ld b, a
         ld a, b
