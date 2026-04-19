@@ -45,81 +45,6 @@ flush_rows_loop:
         jr nz, flush_rows_loop
         ret
 
-; Upload the lane-local dynamic pellet tiles to the correct SCREEN 2 pattern
-; page, then copy the matching tile IDs into the lane's visible row.
-flush_dynamic_tiles:
-        ld a, (STATE_ID)
-        cp #STATE_PLAY
-        ret nz
-        ld a, (PLAYER_COUNT_V)
-        ld b, a
-        xor a
-        ld c, #0
-flush_dynamic_loop:
-        push bc
-        ld a, c
-        ld (LANE_INDEX_TMP), a
-        call get_lane_row
-        add a, #2
-        ld (LANE_ROW_TMP), a
-        call get_screen2_pattern_page_offset
-        ld a, e
-        ld (PATTERN_PAGE_OFF_L), a
-        ld a, d
-        ld (PATTERN_PAGE_OFF_H), a
-
-        ld a, c
-        ld hl, #dynamic_tile_ptrs
-        call get_word_from_table
-        push hl
-        ld a, c
-        ld hl, #dynamic_tile_vram_ptrs
-        call get_word_from_table
-        ld a, (PATTERN_PAGE_OFF_L)
-        ld e, a
-        ld a, (PATTERN_PAGE_OFF_H)
-        ld d, a
-        add hl, de
-        ex de, hl
-        pop hl
-        ld b, #DYN_TILE_BYTES
-        call vram_copy_block
-
-        ld a, (LANE_ROW_TMP)
-        ld d, a
-        ld e, #LANE_LEFT_COL
-        call get_screen_ptr
-        push hl
-        ld a, (LANE_ROW_TMP)
-        ld d, a
-        ld e, #LANE_LEFT_COL
-        call get_name_ptr
-        ex de, hl
-        pop hl
-        ld b, #DYN_TILES_PER_LANE
-        call vram_copy_block
-
-        pop bc
-        inc c
-        djnz flush_dynamic_loop
-        ret
-
-; SCREEN 2 rows 0-7, 8-15, and 16-23 live in three separate pattern/color
-; pages, so lane rows need a page-relative upload offset.
-get_screen2_pattern_page_offset:
-        cp #8
-        jr c, screen2_page0
-        cp #16
-        jr c, screen2_page1
-        ld de, #0x1000
-        ret
-screen2_page1:
-        ld de, #0x0800
-        ret
-screen2_page0:
-        ld de, #0x0000
-        ret
-
 vram_copy_block:
         ld c, b
         ld b, #0
@@ -171,6 +96,7 @@ build_actor_lane_loop:
         call calc_lane_sprite_y
         call append_player_sprite
         call append_enemy_sprite
+        call append_power_pellet_sprite
         pop bc
         inc c
         djnz build_actor_lane_loop
@@ -257,6 +183,27 @@ enemy_sprite_chase:
 enemy_sprite_ready:
         ld l, L_EX_L(ix)
         ld h, L_EX_H(ix)
+        ld a, (SPRITE_Y_TMP)
+        ld d, a
+        call append_sprite_entry
+        ret
+
+append_power_pellet_sprite:
+        ld b, L_PWR_IDX(ix)
+        push bc
+        call dot_is_active
+        pop bc
+        ret z
+        ld a, L_ANM_H(ix)
+        and #0x08
+        ret z
+        ld a, b
+        ld hl, #dot_positions
+        call get_byte_from_table
+        ld h, a
+        ld l, #0
+        ld b, #SPR_PAT_POWER
+        ld c, #SPR_COLOR_PELLET
         ld a, (SPRITE_Y_TMP)
         ld d, a
         call append_sprite_entry
@@ -479,56 +426,15 @@ x_to_column:
         ld a, #SCREEN_WIDTH - 1
         ret
 
-; Map the game's 0..100 8.8 fixed-point lane positions to a 200px lane.
-; Gameplay positions are center-based, so subtract half the 16x16 sprite size.
-; top_left_x = 18 + floor(pos_fp / 128) - 8, preserving the -3..103 tunnel margin.
+; Map the signed 8.8 fixed-point lane position to sprite X without a divide.
+; floor(pos_fp / 128) = 2 * signed(H) + bit7(L), so:
+; top_left_x = 18 - 8 + 2 * signed(H) + bit7(L)
 position_to_sprite_x:
-        bit 7, h
-        jr z, sprite_x_positive
         ld a, l
-        cpl
-        ld l, a
+        add a, a
         ld a, h
-        cpl
-        ld h, a
-        inc hl
-        push bc
-        ld bc, #128
-        xor a
-sprite_x_div_loop:
-        or a
-        sbc hl, bc
-        jr c, sprite_x_div_done
-        inc a
-        jr sprite_x_div_loop
-sprite_x_div_done:
-        add hl, bc
-        ld b, a
-        ld a, h
-        or l
-        ld a, b
-        jr z, sprite_x_negative_store
-        inc a
-sprite_x_negative_store:
-        ld b, a
-        ld a, #SPRITE_LEFT_X - SPRITE_ANCHOR_X
-        sub b
-        pop bc
-        ret
-sprite_x_positive:
-        push bc
-        ld bc, #128
-        xor a
-sprite_x_pos_loop:
-        or a
-        sbc hl, bc
-        jr c, sprite_x_pos_done
-        inc a
-        jr sprite_x_pos_loop
-sprite_x_pos_done:
-        add hl, bc
+        adc a, a
         add a, #SPRITE_LEFT_X - SPRITE_ANCHOR_X
-        pop bc
         ret
 
 random8:

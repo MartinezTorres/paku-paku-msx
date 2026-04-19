@@ -4,7 +4,7 @@ OBJCOPY = objcopy
 
 BUILD_DIR = build
 TARGET = $(BUILD_DIR)/paku
-ASM_SOURCES = $(wildcard src/*.asm) $(wildcard src/*.inc)
+ASM_SOURCES = $(wildcard src/*.asm) $(wildcard src/*.inc) $(wildcard src/*.bin)
 
 .PHONY: all clean run
 

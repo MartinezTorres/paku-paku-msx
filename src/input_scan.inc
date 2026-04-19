@@ -19,11 +19,27 @@ clear_input_buffers:
         ld (QUIT_CONFIRM_TICKS), a
         ld (PENDING_KEY_ROW), a
         ld (PENDING_KEY_MASK), a
+        ld (INPUT_LOCKS), a
         ld hl, #RAW_MATRIX_CURR
         ld (hl), a
         ld de, #RAW_MATRIX_CURR + 1
         ld bc, #(22 - 1)
         ldir
+        ld a, #0xff
+        ld (PENDING_KEY_CODE), a
+        ret
+
+; Consume one-shot edge/pending-key latches while preserving the current held
+; keyboard state. Release-gated states use this after a transition so a key
+; that remains physically held cannot re-trigger on the next scan.
+clear_input_edges_keep_hold_new:
+        xor a
+        ld (INPUT_EDGE), a
+        ld (MENU_ACTION_EDGE), a
+        ld (ANY_KEY_EDGE), a
+        ld (JOY_EDGE), a
+        ld (PENDING_KEY_ROW), a
+        ld (PENDING_KEY_MASK), a
         ld a, #0xff
         ld (PENDING_KEY_CODE), a
         ret
@@ -150,10 +166,45 @@ build_menu_no_ret:
         or #M_ACT_ESC
 build_menu_store:
         ld (MENU_ACTION_CURR), a
+        xor a
+        ld (MENU_ACTION_EDGE), a
+        ld a, #8
+        call get_raw_edge_row_new
         ld b, a
-        ld a, (MENU_ACTION_PREV)
-        cpl
-        and b
+        ld a, (MENU_ACTION_EDGE)
+        bit 5, b
+        jr z, build_menu_edge_no_up
+        or #M_ACT_UP
+build_menu_edge_no_up:
+        bit 6, b
+        jr z, build_menu_edge_no_down
+        or #M_ACT_DOWN
+build_menu_edge_no_down:
+        bit 4, b
+        jr z, build_menu_edge_no_left
+        or #M_ACT_LEFT
+build_menu_edge_no_left:
+        bit 7, b
+        jr z, build_menu_edge_no_right
+        or #M_ACT_RIGHT
+build_menu_edge_no_right:
+        bit 0, b
+        jr z, build_menu_edge_no_space
+        or #M_ACT_SELECT
+build_menu_edge_no_space:
+        ld (MENU_ACTION_EDGE), a
+        ld a, #7
+        call get_raw_edge_row_new
+        ld b, a
+        ld a, (MENU_ACTION_EDGE)
+        bit 7, b
+        jr z, build_menu_edge_no_ret
+        or #M_ACT_SELECT
+build_menu_edge_no_ret:
+        bit 2, b
+        jr z, build_menu_edge_store
+        or #M_ACT_ESC
+build_menu_edge_store:
         ld (MENU_ACTION_EDGE), a
         ret
 
@@ -195,15 +246,28 @@ build_player_inputs_multi_loop:
         ld a, c
         ld hl, #BIND_ROWS_BASE
         call get_offset_ptr_a_hl
-        ld a, (hl)
-        call get_raw_curr_row_new
-        ld d, a
+        ld b, (hl)
         ld a, c
         ld hl, #BIND_MASKS_BASE
         call get_offset_ptr_a_hl
         ld a, (hl)
+        push af
+        ld a, b
+        call get_raw_curr_row_new
+        push af
+        ld a, b
+        call get_raw_prev_row_new
+        ld d, a
+        pop af
+        ld h, a
+        pop af
         ld e, a
         ld a, d
+        cpl
+        and e
+        and h
+        ld d, a
+        ld a, h
         and e
         jr z, build_player_inputs_no_curr
         call get_player_bit_from_index_new
@@ -212,14 +276,7 @@ build_player_inputs_multi_loop:
         or b
         ld (INPUT_CURR), a
 build_player_inputs_no_curr:
-        ld a, c
-        ld hl, #BIND_ROWS_BASE
-        call get_offset_ptr_a_hl
-        ld a, (hl)
-        call get_raw_prev_row_new
-        cpl
-        and d
-        and e
+        ld a, d
         jr z, build_player_inputs_next
         call get_player_bit_from_index_new
         ld e, a
@@ -293,6 +350,18 @@ get_raw_curr_row_new:
 get_raw_prev_row_new:
         ld hl, #RAW_MATRIX_PREV
         jp get_byte_from_table
+
+get_raw_edge_row_new:
+        push bc
+        push af
+        call get_raw_curr_row_new
+        ld b, a
+        pop af
+        call get_raw_prev_row_new
+        cpl
+        and b
+        pop bc
+        ret
 
 ; Name entry uses a lookup table that maps compact key codes to ASCII/control.
 translate_pending_key_new:

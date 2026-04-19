@@ -122,44 +122,53 @@ render_scores_loop:
         cp c
         jr z, render_scores_footer
         jr c, render_scores_footer
-        push bc
-        ld d, #10
         ld a, b
+        ld (LANE_INDEX_TMP), a
+        push bc
+        ld d, #11
+        ld a, (LANE_INDEX_TMP)
         add a, d
         ld d, a
-        ld a, b
+        ld a, (LANE_INDEX_TMP)
         inc a
         ld e, #2
         call draw_u8_2
+        pop bc
+        push bc
         ld hl, #str_dot
-        ld d, #10
-        ld a, b
+        ld d, #11
+        ld a, (LANE_INDEX_TMP)
         add a, d
         ld d, a
         ld e, #4
         call draw_string
-        ld a, b
+        push bc
+        ld a, (LANE_INDEX_TMP)
         call get_hiscore_ptr_from_index_new
         inc hl
         inc hl
-        ld d, #10
-        ld a, b
+        call copy_hiscore_name_to_temp_new
+        pop bc
+        ld hl, #TEMP_NAME_BUF
+        ld d, #11
+        ld a, (LANE_INDEX_TMP)
         add a, d
         ld d, a
         ld e, #6
-        ld b, #HISCORE_NAME_LEN
-        call draw_fixed_chars_new
+        call draw_string
         ld a, b
         pop bc
         push bc
-        ld a, b
+        push bc
+        ld a, (LANE_INDEX_TMP)
         call get_hiscore_ptr_from_index_new
+        pop bc
         ld e, (hl)
         inc hl
         ld d, (hl)
         ex de, hl
-        ld d, #10
-        ld a, b
+        ld d, #11
+        ld a, (LANE_INDEX_TMP)
         add a, d
         ld d, a
         ld e, #18
@@ -217,16 +226,7 @@ set_session_visible_rows_new:
         dec a
         ld (LANE_INDEX_TMP), a
         call get_lane_row
-        ld b, a
-        ld a, (STATE_ID)
-        cp #STATE_NAME
-        ld a, b
-        jr z, set_session_visible_name
         add a, #4
-        ld (VISIBLE_ROWS), a
-        ret
-set_session_visible_name:
-        add a, #5
         ld (VISIBLE_ROWS), a
         ret
 
@@ -243,6 +243,15 @@ render_session_header_new:
         ld e, #8
         call draw_char
 
+        ld a, (DEMO_MODE)
+        or a
+        jr z, render_session_header_time_mode
+        ld hl, #str_demo
+        ld d, #0
+        ld e, #23
+        call draw_string
+        jr render_session_header_best
+render_session_header_time_mode:
         ld a, (TIME_LIMIT_L)
         ld b, a
         ld a, (TIME_LIMIT_H)
@@ -274,6 +283,15 @@ render_session_header_best:
         ld a, (STATE_ID)
         cp #STATE_PLAY
         jr nz, render_session_header_state
+        ld a, (DEMO_MODE)
+        or a
+        jr z, render_session_header_live_quit
+        ld hl, #str_any_key_menu
+        ld d, #1
+        ld e, #15
+        call draw_string
+        ret
+render_session_header_live_quit:
         ld a, (QUIT_CONFIRM_TICKS)
         or a
         ld hl, #str_esc_to_end
@@ -339,18 +357,12 @@ render_message_lane_new:
         ld hl, #0
         jr render_message_lane_draw_score
 render_message_lane_live_score:
-        ld l, L_SCORE_L(ix)
-        ld h, L_SCORE_H(ix)
+        ld l, L_BEST_L(ix)
+        ld h, L_BEST_H(ix)
 render_message_lane_draw_score:
         ld e, #3
         call draw_u16_5
-        ld a, (STATE_ID)
-        cp #STATE_NAME
-        jr z, render_message_lane_name_frame
         call draw_compact_message_lane_frame_new
-        jr render_message_lane_dispatch
-render_message_lane_name_frame:
-        call draw_name_message_lane_frame_new
 render_message_lane_dispatch:
         ld a, (STATE_ID)
         cp #STATE_ASSIGN
@@ -379,38 +391,6 @@ draw_compact_message_lane_frame_new:
         call fill_span
         ld a, (LANE_ROW_TMP)
         add a, #3
-        ld d, a
-        ld e, #LANE_LEFT_COL
-        ld a, #TILE_WALL_BOT
-        ld b, #LANE_SPAN_COLS
-        call fill_span
-        ret
-
-; Name entry gets an extra text row for the editable eight-character buffer.
-draw_name_message_lane_frame_new:
-        ld a, (LANE_ROW_TMP)
-        inc a
-        ld d, a
-        ld e, #LANE_LEFT_COL
-        ld a, #TILE_WALL_TOP
-        ld b, #LANE_SPAN_COLS
-        call fill_span
-        ld a, (LANE_ROW_TMP)
-        add a, #2
-        ld d, a
-        ld e, #LANE_LEFT_COL
-        ld a, #' '
-        ld b, #LANE_SPAN_COLS
-        call fill_span
-        ld a, (LANE_ROW_TMP)
-        add a, #3
-        ld d, a
-        ld e, #LANE_LEFT_COL
-        ld a, #' '
-        ld b, #LANE_SPAN_COLS
-        call fill_span
-        ld a, (LANE_ROW_TMP)
-        add a, #4
         ld d, a
         ld e, #LANE_LEFT_COL
         ld a, #TILE_WALL_BOT
@@ -517,33 +497,25 @@ render_lane_name_message_new:
         ld a, (NAME_PROMPT_KIND)
         or a
         jr z, render_lane_name_top10
-        ld hl, #str_new_best_score
+        ld hl, #str_new_best_name
         jr render_lane_name_head
 render_lane_name_top10:
-        ld hl, #str_top10_score
+        ld hl, #str_top10_name
 render_lane_name_head:
         ld a, (LANE_ROW_TMP)
         add a, #2
         ld d, a
-        ld e, #8
-        call draw_string
-        ld hl, #str_name_prefix
-        ld a, (LANE_ROW_TMP)
-        add a, #3
-        ld d, a
-        ld e, #8
+        ld e, #3
         call draw_string
         call draw_name_buffer_new
         ret
 
-; Filled characters stay visible; the active and remaining slots render as
-; underscores.
+; Filled characters stay visible while blank slots remain underscored.
 draw_name_buffer_new:
-        ld hl, #TEMP_NAME_BUF
         ld a, (LANE_ROW_TMP)
-        add a, #3
+        add a, #2
         ld d, a
-        ld e, #14
+        ld e, #19
         call get_screen_ptr
         ex de, hl
         ld b, #0
@@ -552,22 +524,33 @@ draw_name_buffer_loop:
         cp #HISCORE_NAME_LEN
         ret z
         ld c, a
-        ld a, (NAME_POS)
-        cp c
-        jr z, draw_name_buffer_underscore
-        jr c, draw_name_buffer_underscore
         ld a, c
         ld hl, #TEMP_NAME_BUF
+        push de
         call get_offset_ptr_a_hl
         ld a, (hl)
-        jr draw_name_buffer_store
-draw_name_buffer_underscore:
+        pop de
+        cp #' '
+        jr nz, draw_name_buffer_store
         ld a, #'_'
 draw_name_buffer_store:
         ld (de), a
         inc de
         inc b
         jr draw_name_buffer_loop
+
+copy_hiscore_name_to_temp_new:
+        ld de, #TEMP_NAME_BUF
+        ld b, #HISCORE_NAME_LEN
+copy_hiscore_name_loop:
+        ld a, (hl)
+        ld (de), a
+        inc hl
+        inc de
+        djnz copy_hiscore_name_loop
+        xor a
+        ld (de), a
+        ret
 
 draw_fixed_chars_new:
         push hl
@@ -596,8 +579,15 @@ draw_time_mmss_new:
         call get_screen_ptr
         ex de, hl
         pop hl
+        push de
         ld bc, #60
         call div_u16_bc_new
+        pop bc
+        push hl
+        ld h, d
+        ld l, e
+        ld d, b
+        ld e, c
         ld a, h
         or a
         jr nz, draw_time_mmss_clamp
@@ -605,33 +595,24 @@ draw_time_mmss_new:
         cp #100
         jr c, draw_time_mmss_minutes_ok
 draw_time_mmss_clamp:
-        ld l, #99
+        ld hl, #99
 draw_time_mmss_minutes_ok:
-        push de
         call draw_two_digits_to_buffer_new
-        pop de
-        inc de
         inc de
         ld a, #':'
         ld (de), a
         inc de
-        ex de, hl
-        ex (sp), hl
-        ex de, hl
-        ; DE now has remainder from div_u16_bc_new
-        ld a, d
+        pop hl
+        ld a, h
         or a
         jr nz, draw_time_mmss_secs_clamp
-        ld a, e
+        ld a, l
         cp #100
         jr c, draw_time_mmss_secs_ok
 draw_time_mmss_secs_clamp:
-        ld e, #99
+        ld hl, #99
 draw_time_mmss_secs_ok:
-        push hl
-        ex de, hl
         call draw_two_digits_to_buffer_new
-        pop hl
         ret
 
 draw_two_digits_to_buffer_new:

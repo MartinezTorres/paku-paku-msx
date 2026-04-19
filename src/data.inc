@@ -36,35 +36,6 @@ dot_masks_hi:
         .db 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
         .db 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80
 
-dynamic_tile_ptrs:
-        .dw DYN_TILE_BUF0, DYN_TILE_BUF1, DYN_TILE_BUF2, DYN_TILE_BUF3
-
-dynamic_tile_vram_ptrs:
-        .dw PATTERN_TABLE + (DYN_TILE_BASE * 8)
-        .dw PATTERN_TABLE + ((DYN_TILE_BASE + DYN_TILES_PER_LANE) * 8)
-        .dw PATTERN_TABLE + ((DYN_TILE_BASE + (DYN_TILES_PER_LANE * 2)) * 8)
-        .dw PATTERN_TABLE + ((DYN_TILE_BASE + (DYN_TILES_PER_LANE * 3)) * 8)
-
-dynamic_tile_id_bases:
-        .db DYN_TILE_BASE
-        .db DYN_TILE_BASE + DYN_TILES_PER_LANE
-        .db DYN_TILE_BASE + (DYN_TILES_PER_LANE * 2)
-        .db DYN_TILE_BASE + (DYN_TILES_PER_LANE * 3)
-
-small_dot_phase4:
-        .db 0x00,0x00,0x1c,0x3e,0x3e,0x3e,0x1c,0x00
-small_dot_phase0_left:
-        .db 0x00,0x00,0x01,0x03,0x03,0x03,0x01,0x00
-small_dot_phase0_right:
-        .db 0x00,0x00,0xc0,0xe0,0xe0,0xe0,0xc0,0x00
-
-power_dot_phase4:
-        .db 0x00,0x3c,0x7e,0x7e,0x7e,0x7e,0x7e,0x3c
-power_dot_phase0_left:
-        .db 0x00,0x03,0x07,0x07,0x07,0x07,0x07,0x03
-power_dot_phase0_right:
-        .db 0x00,0xc0,0xe0,0xe0,0xe0,0xe0,0xe0,0xc0
-
 lane_ptrs:
         .dw LANE0, LANE1, LANE2, LANE3
 
@@ -97,6 +68,9 @@ str_select_mode:
         .db 0
 str_time:
         .ascii "TIME"
+        .db 0
+str_demo:
+        .ascii "DEMO"
         .db 0
 str_best:
         .ascii "BEST"
@@ -134,6 +108,9 @@ str_no_scores:
 str_press_any:
         .ascii "PRESS ANY KEY"
         .db 0
+str_any_key_menu:
+        .ascii "ANY KEY MENU"
+        .db 0
 str_menu_help_1:
         .ascii "UP/DOWN MOVE"
         .db 0
@@ -167,14 +144,11 @@ str_time_up:
 str_winner_round:
         .ascii "WINNER OF THE ROUND"
         .db 0
-str_top10_score:
-        .ascii "TOP-10 SCORE!"
+str_top10_name:
+        .ascii "TOP-10! NAME: "
         .db 0
-str_new_best_score:
-        .ascii "NEW BEST SCORE!"
-        .db 0
-str_name_prefix:
-        .ascii "NAME: "
+str_new_best_name:
+        .ascii "NEW BEST! NAME: "
         .db 0
 str_enter_name:
         .ascii "ENTER NAME"

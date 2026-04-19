@@ -117,13 +117,13 @@ maybe_swap_bc:
 compare_scores_bc:
         ld a, b
         call set_ix_to_lane_a
-        ld l, L_SCORE_L(ix)
-        ld h, L_SCORE_H(ix)
+        ld l, L_BEST_L(ix)
+        ld h, L_BEST_H(ix)
         push hl
         ld a, c
         call set_ix_to_lane_a
-        ld e, L_SCORE_L(ix)
-        ld d, L_SCORE_H(ix)
+        ld e, L_BEST_L(ix)
+        ld d, L_BEST_H(ix)
         pop hl
         ld a, d
         cp h

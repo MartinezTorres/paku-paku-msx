@@ -36,8 +36,8 @@ SPRITE_PATTERN_TABLE .equ 0x3800
 SCREEN_WIDTH    .equ 32
 SCREEN_HEIGHT   .equ 24
 SPRITE_BUFFER   .equ 0xc300
-SPRITE_BYTES    .equ 44
-SPRITE_PATTERN_BYTES .equ 416
+SPRITE_BYTES    .equ 52
+SPRITE_PATTERN_BYTES .equ 448
 SPRITE_END_Y    .equ 208
 LANE_LEFT_COL   .equ 2
 LANE_SPAN_COLS  .equ 26
@@ -57,6 +57,10 @@ STATE_NAME      .equ 5
 STATE_SCORES    .equ 6
 STATE_ROUND     .equ STATE_WINNER
 STATE_SERIES    .equ STATE_NAME
+
+; Attract cycle phases for the idle menu flow.
+ATTRACT_TO_SCORES .equ 0
+ATTRACT_TO_DEMO   .equ 1
 
 ; Match type identifiers.
 SERIES_ENDLESS  .equ 0
@@ -96,15 +100,8 @@ TILE_EYES       .equ 17
 TILE_CUP        .equ 18
 TILE_WALL_TOP   .equ 24
 TILE_WALL_BOT   .equ 25
-TILE_DOT_S2     .equ 12
-TILE_DOT_S6     .equ 13
-TILE_PWR_S0     .equ 14
-TILE_PWR_S4     .equ 15
-
-; Dynamic tile allocation used for per-lane pellet rendering.
-DYN_TILE_BASE       .equ 128
-DYN_TILES_PER_LANE  .equ 26
-DYN_TILE_BYTES      .equ 208
+TILE_DOT_SPLIT_R .equ 12
+TILE_DOT_SPLIT_L .equ 13
 
 ; Sprite pattern indices inside the hardware sprite pattern table.
 SPR_PAT_PAC_R       .equ 0
@@ -113,13 +110,14 @@ SPR_PAT_PAC_FULL    .equ 8
 SPR_PAT_PAC_DEAD    .equ 12
 SPR_PAT_GHOST       .equ 16
 SPR_PAT_EYES        .equ 20
-SPR_PAT_MENU_Y_TOP  .equ 24
-SPR_PAT_MENU_Y_MID  .equ 28
-SPR_PAT_MENU_Y_GHOST_HI .equ 32
-SPR_PAT_MENU_Y_GHOST_LO .equ 36
-SPR_PAT_MENU_Y_EDGE_HI  .equ 40
-SPR_PAT_MENU_Y_EDGE_LO  .equ 44
-SPR_PAT_MENU_B_EYE  .equ 48
+SPR_PAT_POWER       .equ 24
+SPR_PAT_MENU_Y_TOP  .equ 28
+SPR_PAT_MENU_Y_MID  .equ 32
+SPR_PAT_MENU_Y_GHOST_HI .equ 36
+SPR_PAT_MENU_Y_GHOST_LO .equ 40
+SPR_PAT_MENU_Y_EDGE_HI  .equ 44
+SPR_PAT_MENU_Y_EDGE_LO  .equ 48
+SPR_PAT_MENU_B_EYE  .equ 52
 
 ; Page 0 asset modes and menu title sprite count.
 PAGE0_ASSET_GAME    .equ 0
@@ -131,6 +129,28 @@ SPR_COLOR_GHOST     .equ 8
 SPR_COLOR_FRIGHT    .equ 7
 SPR_COLOR_EYES      .equ 15
 SPR_COLOR_DEAD      .equ 14
+SPR_COLOR_PELLET    .equ 11
+
+; Arkos stand-alone sound-effects player copied into page-2 RAM at boot.
+SE_PLAYER_BASE      .equ 0x8000
+SE_WRAPPER_SIZE     .equ 670
+SE_SFX_BANK_OFS     .equ 0x0000
+SE_INIT_SFX_OFS     .equ 0x00da
+SE_PLAY_SFX_OFS     .equ 0x00ea
+SE_STOP_SFX_OFS     .equ 0x0112
+SE_PLAY_FRAME_OFS   .equ 0x0133
+
+; Audio modes, channels, and the gameplay-oriented effect mapping.
+AUDIO_MODE_STOPPED .equ 0
+AUDIO_MODE_ACTIVE   .equ 1
+AUDIO_CH_UI         .equ 0
+AUDIO_CH_GAME       .equ 1
+AUDIO_CH_MAJOR      .equ 2
+SFX_PELLET          .equ 1
+SFX_DEATH           .equ 2
+SFX_REFILL          .equ 3
+SFX_POWER           .equ 4
+SFX_GHOST           .equ 5
 
 ; Gameplay-space positions and timers in 8.8 fixed point.
 TRACK_MAX   .equ 0x6400
@@ -163,27 +183,27 @@ L_SCORE_L   .equ 14
 L_SCORE_H   .equ 15
 L_STATUS    .equ 16
 L_SERIES    .equ 17
-L_RANK      .equ 18
-L_PAD       .equ 19
+L_BEST_L    .equ 18
+L_BEST_H    .equ 19
 
 LANE_SIZE   .equ 20
 
 ; Main screen buffer in RAM, copied to the VRAM name table each frame.
 SCREEN_BUFFER   .equ 0xc000
 
-; Core session state and timing work area.
-MODE_ID         .equ 0xda00
+; Core session state, attract/demo bookkeeping, and timing work area.
+ATTRACT_PHASE   .equ 0xda00
 STATE_ID        .equ 0xda01
 MENU_INDEX      .equ 0xda02
 INPUT_CURR      .equ 0xda03
 INPUT_PREV      .equ 0xda04
 INPUT_EDGE      .equ 0xda05
 PLAYER_COUNT_V  .equ 0xda06
-ROUND_TIME_CFG  .equ 0xda07
-TIMER_SECS      .equ 0xda08
-TIMER_FRAMES    .equ 0xda09
-ROUND_NUMBER    .equ 0xda0a
-ROUND_LIMIT     .equ 0xda0b
+ATTRACT_TICKS_L .equ 0xda07
+ATTRACT_TICKS_H .equ 0xda08
+DEMO_MODE       .equ 0xda09
+DEMO_TICKS_L    .equ 0xda0a
+DEMO_TICKS_H    .equ 0xda0b
 SERIES_TYPE_V   .equ 0xda0c
 VISIBLE_ROWS    .equ 0xda0d
 GLOBAL_TICKS_L  .equ 0xda0e
@@ -215,15 +235,14 @@ HISCORE_CANDIDATE_H .equ 0xda21
 PLAYFIELD_ROW_TMP   .equ 0xda22
 UNUSED_SCRATCH      .equ 0xda23
 SPRITE_Y_TMP        .equ 0xda24
-DYN_TILE_PTR_TMP    .equ 0xda25
 SPRITE_LIST_PTR     .equ 0xda25
 FLUSH_ROW_LIMIT     .equ 0xda26
-PATTERN_PAGE_OFF_L  .equ 0xda26
-PATTERN_PAGE_OFF_H  .equ 0xda27
 REFRESH_HZ      .equ 0xda28
 LAST_JIFFY      .equ 0xda29
 PAGE0_ASSET_MODE .equ 0xda2a
 ASSIGN_RELEASE_WAIT .equ 0xda2b
+NAME_RELEASE_WAIT .equ 0xda2c
+INPUT_LOCKS     .equ 0xda2f
 RANKS_BASE      .equ 0xda30
 
 ; Menu navigation, joystick state, and match configuration.
@@ -266,16 +285,16 @@ RAW_MATRIX_PREV     .equ 0xda6b
 BIND_ROWS_BASE      .equ 0xda76
 BIND_MASKS_BASE     .equ 0xda7a
 TEMP_NAME_BUF       .equ 0xda7e
+AUDIO_MODE          .equ 0xda86
+AUDIO_ACCUM         .equ 0xda87
 HISCORE_TABLE       .equ 0xdab0
 HISCORE_ENTRY_SIZE  .equ 10
 HISCORE_NAME_LEN    .equ 8
+MENU_SAVE_PLAYERS   .equ 0xda2d
+MENU_SAVE_TIME_IDX  .equ 0xda2e
 
-; Dynamic tile bitmaps, cached font patterns, and sprite attribute staging.
-DYN_TILE_BUF0   .equ 0xc600
-DYN_TILE_BUF1   .equ DYN_TILE_BUF0 + DYN_TILE_BYTES
-DYN_TILE_BUF2   .equ DYN_TILE_BUF1 + DYN_TILE_BYTES
-DYN_TILE_BUF3   .equ DYN_TILE_BUF2 + DYN_TILE_BYTES
-FONT_BUFFER     .equ 0xc940
+; Cached font patterns and sprite attribute staging.
+FONT_BUFFER     .equ 0xc600
 
 ; Per-player lane structs in RAM.
 LANES_BASE      .equ 0xc500
@@ -305,7 +324,8 @@ LANE3           .equ LANES_BASE + (LANE_SIZE * 3)
         ; High-level state flow, menu flow, and input binding logic.
         .include "gameflow.inc"
 
-        ; Core simulation, lane rendering, and rankings used by the active flow.
+        ; Arkos audio glue plus the active simulation/rendering modules.
+        .include "audio.inc"
         .include "simulation.inc"
         .include "lane_render.inc"
         .include "ranking.inc"

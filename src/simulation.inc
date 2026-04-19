@@ -20,6 +20,8 @@ init_lane_inactive:
         ld L_STATUS(ix), a
         ld L_SCORE_L(ix), a
         ld L_SCORE_H(ix), a
+        ld L_BEST_L(ix), a
+        ld L_BEST_H(ix), a
         ld L_MULT(ix), a
         ld L_DOTS_L(ix), a
         ld L_DOTS_H(ix), a
@@ -34,6 +36,12 @@ init_lane_next:
 ; Respawn one lane at its canonical player/ghost positions with a fresh pellet
 ; set and multiplier state.
 init_active_lane:
+        xor a
+        ld L_BEST_L(ix), a
+        ld L_BEST_H(ix), a
+
+; Respawn a lane after death without clearing its best achieved score.
+respawn_active_lane_new:
         ld hl, #PLAYER_START
         ld L_PX_L(ix), l
         ld L_PX_H(ix), h
@@ -58,7 +66,128 @@ init_active_lane:
 
 ; Step every active lane once per 60 Hz simulation tick. Register E carries the
 ; player-bit mask for the lane currently being updated.
+build_demo_inputs_new:
+        xor a
+        ld (INPUT_CURR), a
+        ld (INPUT_EDGE), a
+        ld ix, #LANES_BASE
+        ld a, (PLAYER_COUNT_V)
+        ld b, a
+        ld e, #1
+build_demo_inputs_loop:
+        push bc
+        push de
+        call build_demo_lane_input_new
+        pop de
+        jr z, build_demo_inputs_next
+        ld a, (INPUT_CURR)
+        or e
+        ld (INPUT_CURR), a
+        ld a, (INPUT_EDGE)
+        or e
+        ld (INPUT_EDGE), a
+build_demo_inputs_next:
+        pop bc
+        push bc
+        ld bc, #LANE_SIZE
+        add ix, bc
+        pop bc
+        sla e
+        djnz build_demo_inputs_loop
+        ret
+
+; The attract-mode demo only needs the game's one-button reverse control. It
+; prefers a nearby power pellet, runs away from a close ghost, and chases while
+; frightened.
+build_demo_lane_input_new:
+        ld a, L_STATUS(ix)
+        and #ST_ALIVE
+        ret z
+
+        ld a, L_PX_H(ix)
+        bit 7, a
+        jr nz, demo_desire_left
+        cp #84
+        jr nc, demo_desire_right
+        cp #16
+        jr c, demo_desire_left
+
+        ld a, L_PWR_L(ix)
+        or L_PWR_H(ix)
+        jr nz, demo_seek_ghost
+
+        ld b, L_PWR_IDX(ix)
+        push bc
+        call dot_is_active
+        pop bc
+        jr z, demo_avoid_ghost
+        ld a, b
+        ld hl, #dot_positions
+        call get_byte_from_table
+        ld c, a
+        ld a, L_PX_H(ix)
+        call absdiff_a_c
+        cp #18
+        jr c, demo_seek_power
+
+demo_avoid_ghost:
+        ld a, L_PX_H(ix)
+        ld c, L_EX_H(ix)
+        call absdiff_player_enemy
+        cp #20
+        jr nc, demo_hold_course
+        ld a, L_PX_H(ix)
+        bit 7, a
+        jr nz, demo_desire_right
+        ld c, L_EX_H(ix)
+        cp c
+        jr c, demo_desire_left
+        jr z, demo_desire_left
+        jr demo_desire_right
+
+demo_seek_power:
+        ld a, L_PX_H(ix)
+        bit 7, a
+        jr nz, demo_desire_right
+        cp c
+        jr c, demo_desire_right
+        jr z, demo_hold_course
+        jr demo_desire_left
+
+demo_seek_ghost:
+        ld a, L_PX_H(ix)
+        bit 7, a
+        jr nz, demo_desire_right
+        ld c, L_EX_H(ix)
+        cp c
+        jr c, demo_desire_right
+        jr z, demo_hold_course
+        jr demo_desire_left
+
+demo_desire_left:
+        ld a, L_VX(ix)
+        cp #0xff
+        jr z, demo_hold_course
+        ld a, #1
+        ret
+
+demo_desire_right:
+        ld a, L_VX(ix)
+        cp #1
+        jr z, demo_hold_course
+        ld a, #1
+        ret
+
+demo_hold_course:
+        xor a
+        ret
+
 update_all_lanes:
+        ld a, (INPUT_LOCKS)
+        ld b, a
+        ld a, (INPUT_CURR)
+        and b
+        ld (INPUT_LOCKS), a
         ld ix, #LANES_BASE
         ld a, (PLAYER_COUNT_V)
         ld b, a
@@ -87,6 +216,12 @@ update_one_lane:
         ld a, (INPUT_EDGE)
         and e
         jr z, no_reverse
+        ld a, (INPUT_LOCKS)
+        and e
+        jr nz, no_reverse
+        ld a, (INPUT_LOCKS)
+        or e
+        ld (INPUT_LOCKS), a
         ld a, L_VX(ix)
         xor #0xfe
         ld L_VX(ix), a
@@ -186,9 +321,10 @@ dot_hit_loop:
         ld hl, #POWER_INIT
         ld L_PWR_L(ix), l
         ld L_PWR_H(ix), h
+        call play_power_sfx_new
         jr dot_score_only
 dot_normal:
-        nop
+        call play_pellet_sfx_new
 dot_score_only:
         call add_multiplier_score
 dot_hit_next:
@@ -325,9 +461,12 @@ enemy_store_eye:
         call mul8x8
         ex de, hl
         call add_lane_score_de
+        call play_ghost_sfx_new
         ret
 enemy_kills_player:
-        call init_active_lane
+        call play_death_sfx_new
+        call reset_difficulty_progress_new
+        call respawn_active_lane_new
         ret
 
 ; Frightened time counts down using the same 8.8 scale as the difficulty ramp.
@@ -356,6 +495,7 @@ refill_dots_if_empty:
         or L_DOTS_H(ix)
         ret nz
         call add_dots
+        call play_refill_sfx_new
         ret
 
 ; Difficulty rises through a small phase accumulator so speed increases
@@ -386,6 +526,20 @@ tick_done:
 diff_recalc:
         call recalc_deltas
 diff_done:
+        ret
+
+; Restore the original starting difficulty used at the beginning of a match.
+reset_difficulty_progress_new:
+        xor a
+        ld (GLOBAL_TICKS_L), a
+        ld (GLOBAL_TICKS_H), a
+        ld (DIFF_PHASE_L), a
+        ld (DIFF_PHASE_H), a
+        ld (DIFF_FP_L), a
+        ld (STEP_ACCUM), a
+        ld a, #1
+        ld (DIFF_FP_H), a
+        call recalc_deltas
         ret
 
 ; Derive player, chase, frightened, and eyes deltas from the current difficulty
@@ -509,9 +663,24 @@ add_lane_score_de:
         ld a, #0xff
         ld L_SCORE_L(ix), a
         ld L_SCORE_H(ix), a
-        ret
+        jr add_lane_score_update_best
 add_lane_score_store:
         ld L_SCORE_H(ix), a
+add_lane_score_update_best:
+        ld e, L_SCORE_L(ix)
+        ld d, L_SCORE_H(ix)
+        ld a, L_BEST_H(ix)
+        cp d
+        jr c, add_lane_score_store_best
+        jr nz, add_lane_score_done
+        ld a, L_BEST_L(ix)
+        cp e
+        jr c, add_lane_score_store_best
+        jr nc, add_lane_score_done
+add_lane_score_store_best:
+        ld L_BEST_L(ix), e
+        ld L_BEST_H(ix), d
+add_lane_score_done:
         ret
 
 ; Pellet occupancy lives in two bytes; low/high mask tables provide the bit for

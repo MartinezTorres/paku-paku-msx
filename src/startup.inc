@@ -24,6 +24,7 @@ init:
         call detect_refresh_hz
         ld a, (JIFFY)
         ld (LAST_JIFFY), a
+        call init_audio_system
         call init_vram_assets
         call sync_page0_assets
         call flush_actor_sprites
@@ -49,19 +50,23 @@ main_wait_tick:
         call read_inputs
         pop bc
         ld a, c
+        push bc
         call run_simulation_steps
+        pop bc
         di
+        call sync_audio_mode
+        ld a, c
+        call update_audio_frames
         call sync_page0_assets
         call render_state
         call flush_visible_rows
-        call flush_dynamic_tiles
         call flush_actor_sprites
         jr main_loop
 
 ; Reset all global/session variables to the menu defaults expected at cold boot.
 reset_globals:
         xor a
-        ld (MODE_ID), a
+        ld (ATTRACT_PHASE), a
         ld (MENU_INDEX), a
         ld (INPUT_CURR), a
         ld (INPUT_PREV), a
@@ -82,6 +87,11 @@ reset_globals:
         ld (JOY_EDGE), a
         ld (MENU_IDLE_L), a
         ld (MENU_IDLE_H), a
+        ld (ATTRACT_TICKS_L), a
+        ld (ATTRACT_TICKS_H), a
+        ld (DEMO_MODE), a
+        ld (DEMO_TICKS_L), a
+        ld (DEMO_TICKS_H), a
         ld (TIME_LIMIT_IDX), a
         ld (TIME_LIMIT_L), a
         ld (TIME_LIMIT_H), a
@@ -103,13 +113,18 @@ reset_globals:
         xor a
         ld (PENDING_KEY_ROW), a
         ld (PENDING_KEY_MASK), a
+        ld (AUDIO_ACCUM), a
         ld (MENU_RELEASE_WAIT), a
         ld (QUIT_CONFIRM_TICKS), a
         ld (LAST_VISIBLE_ROWS), a
         ld (ASSIGN_RELEASE_WAIT), a
+        ld (NAME_RELEASE_WAIT), a
+        ld (MENU_SAVE_TIME_IDX), a
+        ld (AUDIO_MODE), a
         ld (PLAYER_COUNT_V), a
         inc a
         ld (PLAYER_COUNT_V), a
+        ld (MENU_SAVE_PLAYERS), a
         call clear_input_buffers
         call clear_temp_name_buffer
         call clear_high_scores
@@ -193,11 +208,11 @@ init_vram_assets:
         call vram_copy_bc
         ld hl, #sprite_patterns
         ld de, #SPRITE_PATTERN_TABLE
-        ld bc, #192
+        ld bc, #224
         call vram_copy_bc
         ld hl, #menu_title_sprite_patterns
-        ld de, #(SPRITE_PATTERN_TABLE + 192)
-        ld bc, #(SPRITE_PATTERN_BYTES - 192)
+        ld de, #(SPRITE_PATTERN_TABLE + 224)
+        ld bc, #(SPRITE_PATTERN_BYTES - 224)
         call vram_copy_bc
         ret
 
@@ -210,8 +225,7 @@ overlay_custom_patterns_buffer:
         ret
 
 ; Reuse FONT_BUFFER as a temporary 0x800-byte color page. Start from the
-; default white-on-blue color, then overwrite the custom tiles and reserve
-; colors for the per-lane dynamic pellet tiles.
+; default white-on-blue color, then overwrite the custom tiles.
 build_color_page_buffer:
         ld hl, #FONT_BUFFER
         ld (hl), #0xf1
@@ -233,12 +247,6 @@ build_color_page_tile_fill:
         pop bc
         inc de
         djnz build_color_page_tiles_loop
-
-        ld hl, #(FONT_BUFFER + (DYN_TILE_BASE * 8))
-        ld (hl), #0xb1
-        ld de, #(FONT_BUFFER + (DYN_TILE_BASE * 8) + 1)
-        ld bc, #((DYN_TILE_BYTES * 4) - 1)
-        ldir
         ret
 
 ; Page 0 alternates between menu-title art and gameplay tiles. Only rewrite it

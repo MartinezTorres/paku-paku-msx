@@ -21,6 +21,8 @@ This project is an MSX cartridge in Z80 assembly. The code is split by responsib
   - Menu, scores, countdown, winner, and name-entry rendering for the active flow.
 - `simulation.inc`
   - Lane initialization, player movement, ghost movement, dot hit detection, power mode, score updates, and difficulty ramp.
+- `audio.inc`
+  - Arkos AKM wrapper copy/init, music mode switching, frame-rate adaptation, and common sound-effect entry points.
 - `lane_render.inc`
   - Per-lane playfield rendering, lane-row selection, and dynamic pellet tile composition.
 - `ranking.inc`
