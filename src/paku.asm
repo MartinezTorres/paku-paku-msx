@@ -85,23 +85,14 @@ IN_UP       .equ M_ACT_UP
 IN_DOWN     .equ M_ACT_DOWN
 IN_SELECT   .equ M_ACT_SELECT
 
-; Background and UI tile IDs.
-TILE_PAC_R      .equ 0
-TILE_PAC_L      .equ 1
-TILE_PAC_OPEN   .equ 2
-TILE_PAC_DEAD   .equ 3
-TILE_DOT        .equ 4
-TILE_POWER      .equ 5
-TILE_CURSOR     .equ 6
-TILE_STAR       .equ 7
-TILE_GHOST      .equ 8
-TILE_GHOST_BLUE .equ 16
-TILE_EYES       .equ 17
-TILE_CUP        .equ 18
-TILE_WALL_TOP   .equ 24
-TILE_WALL_BOT   .equ 25
-TILE_DOT_SPLIT_R .equ 12
-TILE_DOT_SPLIT_L .equ 13
+; Active gameplay page-0 tiles, packed contiguously. The menu cursor keeps its
+; own tile index in the separate menu page-0 asset set.
+TILE_DOT         .equ 0
+TILE_DOT_SPLIT_L .equ 1
+TILE_DOT_SPLIT_R .equ 2
+TILE_WALL_TOP    .equ 3
+TILE_WALL_BOT    .equ 4
+TILE_CURSOR      .equ 6
 
 ; Sprite pattern indices inside the hardware sprite pattern table.
 SPR_PAT_PAC_R       .equ 0
